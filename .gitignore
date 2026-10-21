@@ -1,2 +1,5 @@
 # OS noise
 .DS_Store
+
+# Local config, copied from .env.example
+.env

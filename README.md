@@ -2,7 +2,7 @@
 
 A local OpenTelemetry backend with a **web UI**, running Grafana's all-in-one
 [`grafana/otel-lgtm`](https://hub.docker.com/r/grafana/otel-lgtm) image, pinned in
-[`.env`](.env) (`LGTM_VERSION`).
+`.env` (`LGTM_VERSION`).
 
 One container bundles the **OpenTelemetry Collector** plus **Prometheus** (metrics), **Tempo**
 (traces), **Loki** (logs), **Pyroscope** (profiles) and **Grafana**, already wired to each other.
@@ -13,12 +13,17 @@ Point any OTLP exporter at it and the data shows up in the UI.
 ## Run it
 
 ```bash
+cp .env.example .env
 docker compose up -d
 ```
 
+`.env` holds the pinned image version and the Grafana login, and is gitignored — it is yours to
+edit without touching the repo. `.env.example` is the tracked template it is copied from; without
+a `.env`, compose stops with `set LGTM_VERSION in .env`.
+
 Then open **http://127.0.0.1:3000** and log in with `admin` / `admin` (override in
-[`.env`](.env)). Stop with `docker compose down`. Bump the version by editing `LGTM_VERSION` in
-[`.env`](.env) and re-running `docker compose up -d`.
+`.env`). Stop with `docker compose down`. Bump the version by editing `LGTM_VERSION` in
+`.env` and re-running `docker compose up -d`.
 
 ## Ports
 
@@ -73,6 +78,7 @@ interval, and exits non-zero on any failure.
 
 ```
 docker-compose.yml                  the instance
+.env.example                        template for .env (gitignored)
 dashboards/                         Grafana dashboards (provisioned, git-reviewed)
 grafana-provisioning/               the provider that loads them
 scripts/smoke-test.sh               end-to-end verification
@@ -89,7 +95,7 @@ Each component writes under `/data` in the container. That is backed by the **na
 
 ## Customising
 
-Grafana is configured with `GF_*` environment variables (see `.env`). To change the backends
+Grafana is configured with `GF_*` environment variables (see [`.env.example`](.env.example)). To change the backends
 themselves, mount a config over the path the image documents — Prometheus at
 `/otel-lgtm/prometheus.yaml`, Tempo at `/otel-lgtm/tempo-config.yaml`, Loki at
 `/otel-lgtm/loki-config.yaml`, Pyroscope at `/otel-lgtm/pyroscope-config.yaml`, or the collector at
