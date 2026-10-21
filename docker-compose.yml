@@ -1,0 +1,23 @@
+name: otel-instance
+
+services:
+  otel-collector:
+    # Official OpenTelemetry Collector (contrib) distribution.
+    # https://hub.docker.com/r/otel/opentelemetry-collector-contrib
+    image: otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_VERSION:?set OTEL_COLLECTOR_VERSION in .env}
+    container_name: otel-collector
+    command:
+      - "--config=/etc/otelcol-contrib/config.yaml"
+    volumes:
+      - ./config/otelcol-contrib.yaml:/etc/otelcol-contrib/config.yaml:ro
+      - ./data:/var/log/otelcol
+    ports:
+      - "4317:4317"          # OTLP gRPC
+      - "4318:4318"          # OTLP HTTP
+      - "13133:13133"        # health_check extension
+      - "8888:8888"          # collector self-metrics (Prometheus pull)
+      # Debug-only extensions: loopback on the host, since they are an
+      # inspection surface rather than part of the OTLP service.
+      - "127.0.0.1:55679:55679"  # zpages extension
+      - "127.0.0.1:1777:1777"    # pprof extension
+    restart: unless-stopped
