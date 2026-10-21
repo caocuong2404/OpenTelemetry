@@ -1,0 +1,605 @@
+{
+  "uid": "litellm-genai-metrics",
+  "title": "LiteLLM — LLM requests by provider & model",
+  "description": "Per-provider/model view of every LLM request through the LiteLLM proxy: rate, TTFT, TPS and token throughput.\n\nSource metrics (OpenTelemetry GenAI semantic conventions, exported by LiteLLM's OTEL v2 integration and scraped by the LGTM collector's Prometheus exporter):\n\n- gen_ai_server_time_to_first_token_seconds — TTFT (streaming calls only)\n- gen_ai_server_time_per_output_token_seconds — TPOT; TPS = 1 / TPOT\n- gen_ai_client_token_usage_{sum,count} — tokens, split by gen_ai_token_type\n- gen_ai_client_operation_duration_seconds — end-to-end call latency\n\nIdentity is always gen_ai_system (provider) + gen_ai_request_model (the LiteLLM model alias, e.g. claude-haiku-5), never colour alone — every panel has a legend and the breakdown table repeats the values.",
+  "tags": ["litellm", "genai", "opentelemetry"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {
+    "refresh_intervals": ["10s", "30s", "1m", "5m", "15m", "1h"],
+    "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d"]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "provider",
+        "label": "Provider",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "definition": "label_values({__name__=\"gen_ai_client_operation_duration_seconds_count\"}, gen_ai_system)",
+        "query": {
+          "query": "label_values({__name__=\"gen_ai_client_operation_duration_seconds_count\"}, gen_ai_system)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".+",
+        "current": { "text": "All", "value": "$__all" },
+        "refresh": 2,
+        "sort": 1,
+        "hide": 0
+      },
+      {
+        "name": "model",
+        "label": "Model",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "definition": "label_values({__name__=\"gen_ai_client_operation_duration_seconds_count\", gen_ai_system=~\"$provider\"}, gen_ai_request_model)",
+        "query": {
+          "query": "label_values({__name__=\"gen_ai_client_operation_duration_seconds_count\", gen_ai_system=~\"$provider\"}, gen_ai_request_model)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".+",
+        "current": { "text": "All", "value": "$__all" },
+        "refresh": 2,
+        "sort": 1,
+        "hide": 0
+      }
+    ]
+  },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "type": "row",
+      "title": "At a glance",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100
+    },
+    {
+      "type": "stat",
+      "id": 1,
+      "title": "Requests / sec",
+      "description": "All completed LLM calls (success and failure) per second across the selected provider/model.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate({__name__=\"gen_ai_client_operation_duration_seconds_count\", gen_ai_system=~\"$provider\", gen_ai_request_model=~\"$model\"}[$__rate_interval]))",
+          "legendFormat": "requests",
+          "instant": false,
+          "range": true,
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "wideLayout": true,
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 2,
+          "color": { "mode": "fixed", "fixedColor": "text" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "id": 2,
+      "title": "TTFT p95",
+      "description": "Time to first token, 95th percentile, in seconds. Streaming calls only — a non-streaming call records no TTFT.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate({__name__=\"gen_ai_server_time_to_first_token_seconds_bucket\", gen_ai_system=~\"$provider\", gen_ai_request_model=~\"$model\"}[$__rate_interval])))",
+          "legendFormat": "p95",
+          "instant": false,
+          "range": true,
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "wideLayout": true,
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 2,
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 2 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "id": 3,
+      "title": "TPS (tokens / sec)",
+      "description": "Generation speed = 1 / time-per-output-token, averaged over the window. Higher is faster.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1 / (sum(rate({__name__=\"gen_ai_server_time_per_output_token_seconds_sum\", gen_ai_system=~\"$provider\", gen_ai_request_model=~\"$model\"}[$__rate_interval])) / sum(rate({__name__=\"gen_ai_server_time_per_output_token_seconds_count\", gen_ai_system=~\"$provider\", gen_ai_request_model=~\"$model\"}[$__rate_interval])))",
+          "legendFormat": "tps",
+          "instant": false,
+          "range": true,
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "wideLayout": true,
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix:tok/s",
+          "decimals": 1,
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "green", "value": 30 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "id": 4,
+      "title": "Output tokens / sec",
+      "description": "Completion tokens produced per second across the selection.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate({__name__=\"gen_ai_client_token_usage_sum\", gen_ai_token_type=\"output\", gen_ai_system=~\"$provider\", gen_ai_request_model=~\"$model\"}[$__rate_interval]))",
+          "legendFormat": "out",
+          "instant": false,
+          "range": true,
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "wideLayout": true,
+        "colorMode": "none",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix:tok/s",
+          "decimals": 1,
+          "color": { "mode": "fixed", "fixedColor": "text" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "row",
+      "title": "Latency & speed over time",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "id": 101
+    },
+    {
+      "type": "timeseries",
+      "id": 5,
+      "title": "TTFT by model",
+      "description": "Time to first token. p50 and p95 on one axis (both seconds) — never a second y-scale.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by (le, gen_ai_system, gen_ai_request_model) (rate({__name__=\"gen_ai_server_time_to_first_token_seconds_bucket\", gen_ai_system=~\"$provider\", gen_ai_request_model=~\"$model\"}[$__rate_interval])))",
+          "legendFormat": "{{gen_ai_request_model}} p50",
+          "instant": false,
+          "range": true,
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_system, gen_ai_request_model) (rate({__name__=\"gen_ai_server_time_to_first_token_seconds_bucket\", gen_ai_system=~\"$provider\", gen_ai_request_model=~\"$model\"}[$__rate_interval])))",
+          "legendFormat": "{{gen_ai_request_model}} p95",
+          "instant": false,
+          "range": true,
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["mean", "max"] },
+        "tooltip": { "mode": 2, "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 2,
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "axisLabel": "seconds",
+            "scaleDistribution": { "type": "linear" },
+            "stacking": { "mode": "none", "group": "A" },
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false }
+          },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 6,
+      "title": "TPS by model (tokens / sec)",
+      "description": "Generation throughput per model: 1 / average time-per-output-token.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1 / (sum by (gen_ai_system, gen_ai_request_model) (rate({__name__=\"gen_ai_server_time_per_output_token_seconds_sum\", gen_ai_system=~\"$provider\", gen_ai_request_model=~\"$model\"}[$__rate_interval])) / sum by (gen_ai_system, gen_ai_request_model) (rate({__name__=\"gen_ai_server_time_per_output_token_seconds_count\", gen_ai_system=~\"$provider\", gen_ai_request_model=~\"$model\"}[$__rate_interval])))",
+          "legendFormat": "{{gen_ai_request_model}}",
+          "instant": false,
+          "range": true,
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["mean", "max"] },
+        "tooltip": { "mode": 2, "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix:tok/s",
+          "decimals": 1,
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "axisLabel": "tokens / sec",
+            "scaleDistribution": { "type": "linear" },
+            "stacking": { "mode": "none", "group": "A" },
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false }
+          },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "row",
+      "title": "Throughput & volume",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
+      "id": 102
+    },
+    {
+      "type": "timeseries",
+      "id": 7,
+      "title": "Token throughput by model",
+      "description": "Input and output tokens per second. Both measures share one axis (tokens/sec).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (gen_ai_system, gen_ai_request_model) (rate({__name__=\"gen_ai_client_token_usage_sum\", gen_ai_token_type=\"input\", gen_ai_system=~\"$provider\", gen_ai_request_model=~\"$model\"}[$__rate_interval]))",
+          "legendFormat": "{{gen_ai_request_model}} in",
+          "instant": false,
+          "range": true,
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (gen_ai_system, gen_ai_request_model) (rate({__name__=\"gen_ai_client_token_usage_sum\", gen_ai_token_type=\"output\", gen_ai_system=~\"$provider\", gen_ai_request_model=~\"$model\"}[$__rate_interval]))",
+          "legendFormat": "{{gen_ai_request_model}} out",
+          "instant": false,
+          "range": true,
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["mean", "max"] },
+        "tooltip": { "mode": 2, "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix:tok/s",
+          "decimals": 1,
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "axisLabel": "tokens / sec",
+            "scaleDistribution": { "type": "linear" },
+            "stacking": { "mode": "none", "group": "A" },
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false }
+          },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 8,
+      "title": "Request rate by model",
+      "description": "Calls per second per model. Includes failures — see the error breakdown in the table below.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (gen_ai_system, gen_ai_request_model) (rate({__name__=\"gen_ai_client_operation_duration_seconds_count\", gen_ai_system=~\"$provider\", gen_ai_request_model=~\"$model\"}[$__rate_interval]))",
+          "legendFormat": "{{gen_ai_request_model}}",
+          "instant": false,
+          "range": true,
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["mean", "sum"] },
+        "tooltip": { "mode": 2, "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 3,
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "axisLabel": "requests / sec",
+            "scaleDistribution": { "type": "linear" },
+            "stacking": { "mode": "none", "group": "A" },
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false }
+          },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 9,
+      "title": "End-to-end latency by model",
+      "description": "gen_ai.client.operation.duration — the full proxy call including LiteLLM overhead. p50 and p95 on one axis.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by (le, gen_ai_system, gen_ai_request_model) (rate({__name__=\"gen_ai_client_operation_duration_seconds_bucket\", gen_ai_system=~\"$provider\", gen_ai_request_model=~\"$model\"}[$__rate_interval])))",
+          "legendFormat": "{{gen_ai_request_model}} p50",
+          "instant": false,
+          "range": true,
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_system, gen_ai_request_model) (rate({__name__=\"gen_ai_client_operation_duration_seconds_bucket\", gen_ai_system=~\"$provider\", gen_ai_request_model=~\"$model\"}[$__rate_interval])))",
+          "legendFormat": "{{gen_ai_request_model}} p95",
+          "instant": false,
+          "range": true,
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["mean", "max"] },
+        "tooltip": { "mode": 2, "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 2,
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "gradientMode": "none",
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": true,
+            "axisPlacement": "auto",
+            "axisLabel": "seconds",
+            "scaleDistribution": { "type": "linear" },
+            "stacking": { "mode": "none", "group": "A" },
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false }
+          },
+          "mappings": []
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "row",
+      "title": "Breakdown",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
+      "id": 103
+    },
+    {
+      "type": "table",
+      "id": 10,
+      "title": "Provider / model breakdown",
+      "description": "Identity and values as text, so nothing is carried by colour alone. One row per provider+model route.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 33 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (gen_ai_system, gen_ai_request_model) (increase({__name__=\"gen_ai_client_operation_duration_seconds_count\", gen_ai_system=~\"$provider\", gen_ai_request_model=~\"$model\"}[$__range])) > 0",
+          "legendFormat": "requests",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_system, gen_ai_request_model) (rate({__name__=\"gen_ai_server_time_to_first_token_seconds_bucket\", gen_ai_system=~\"$provider\", gen_ai_request_model=~\"$model\"}[$__range]))) > 0",
+          "legendFormat": "ttft",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        },
+        {
+          "refId": "C",
+          "expr": "1 / (sum by (gen_ai_system, gen_ai_request_model) (rate({__name__=\"gen_ai_server_time_per_output_token_seconds_sum\", gen_ai_system=~\"$provider\", gen_ai_request_model=~\"$model\"}[$__range])) / sum by (gen_ai_system, gen_ai_request_model) (rate({__name__=\"gen_ai_server_time_per_output_token_seconds_count\", gen_ai_system=~\"$provider\", gen_ai_request_model=~\"$model\"}[$__range]))) > 0",
+          "legendFormat": "tps",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        },
+        {
+          "refId": "D",
+          "expr": "sum by (gen_ai_system, gen_ai_request_model) (increase({__name__=\"gen_ai_client_token_usage_sum\", gen_ai_token_type=\"output\", gen_ai_system=~\"$provider\", gen_ai_request_model=~\"$model\"}[$__range])) > 0",
+          "legendFormat": "tokens",
+          "instant": true,
+          "range": false,
+          "format": "table",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "Time 1": true, "Time 2": true, "Time 3": true, "Time 4": true, "job": true, "service_name": true, "instance": true },
+            "renameByName": {
+              "gen_ai_system": "Provider",
+              "gen_ai_request_model": "Model",
+              "Value #A": "Requests",
+              "Value #B": "TTFT p95 (s)",
+              "Value #C": "TPS",
+              "Value #D": "Output tokens"
+            }
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": { "show": false, "reducer": ["sum"], "countRows": false, "fields": "" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "text" },
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Requests" },
+            "properties": [{ "id": "unit", "value": "short" }, { "id": "decimals", "value": 0 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "TTFT p95 (s)" },
+            "properties": [{ "id": "unit", "value": "s" }, { "id": "decimals", "value": 2 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "TPS" },
+            "properties": [{ "id": "unit", "value": "suffix:tok/s" }, { "id": "decimals", "value": 1 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Output tokens" },
+            "properties": [{ "id": "unit", "value": "short" }, { "id": "decimals", "value": 0 }]
+          }
+        ]
+      }
+    }
+  ]
+}

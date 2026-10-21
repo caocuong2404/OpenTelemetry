@@ -48,6 +48,16 @@ curl -X POST http://localhost:4318/v1/logs \
 
 Then explore it in Grafana (Explore → Loki).
 
+## Dashboards
+
+Open **http://127.0.0.1:3000** → **Dashboards → LiteLLM → LiteLLM — LLM requests by provider &
+model**. It tracks every LLM request through the LiteLLM proxy broken out by provider and model:
+request rate, TTFT, TPS and token throughput, plus a per-route breakdown table.
+
+Dashboards are provisioned from [`dashboards/`](dashboards) so they survive a container rebuild and
+can be reviewed in git. [`grafana-provisioning/dashboards-litellm.yml`](grafana-provisioning) is the
+provider that loads them; Grafana re-reads both every 30s, so edits show up without a restart.
+
 ## Verify
 
 ```bash
@@ -62,8 +72,10 @@ interval, and exits non-zero on any failure.
 ## Layout
 
 ```
-docker-compose.yml     the instance
-scripts/smoke-test.sh  end-to-end verification
+docker-compose.yml                  the instance
+dashboards/                         Grafana dashboards (provisioned, git-reviewed)
+grafana-provisioning/               the provider that loads them
+scripts/smoke-test.sh               end-to-end verification
 ```
 
 Each component writes under `/data` in the container. That is backed by the **named volume**

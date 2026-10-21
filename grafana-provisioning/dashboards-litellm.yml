@@ -1,0 +1,14 @@
+apiVersion: 1
+
+# File-based dashboard provisioning, added alongside the LGTM image's own
+# providers (those live at /etc/grafana/provisioning/* and are left alone).
+providers:
+  - name: litellm
+    orgId: 1
+    folder: LiteLLM
+    type: file
+    disableDeletion: true
+    allowUiUpdates: true
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

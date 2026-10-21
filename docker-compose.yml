@@ -23,6 +23,12 @@ services:
       # mount: Loki/Prometheus keep WAL-backed stores, and a macOS virtiofs
       # bind mount is a known hazard for those.
       - lgtm-data:/data
+      # Grafana dashboards, provisioned from this repo so they survive a
+      # container rebuild and can be reviewed in git. The image keeps Grafana
+      # under /otel-lgtm/grafana and reads provisioning from conf/provisioning;
+      # these mount as extra files so its own providers stay untouched.
+      - ./grafana-provisioning/dashboards-litellm.yml:/otel-lgtm/grafana/conf/provisioning/dashboards/litellm.yml:ro
+      - ./dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "3000:3000"    # Grafana web UI
       - "4317:4317"    # OTLP gRPC
