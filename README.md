@@ -1,14 +1,14 @@
 # OpenTelemetry instance
 
-A local [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) instance running the
-official **contrib** distribution from the [`otel` Docker Hub org](https://hub.docker.com/u/otel):
-[`otel/opentelemetry-collector-contrib`](https://hub.docker.com/r/otel/opentelemetry-collector-contrib).
-The version is pinned in [`.env`](.env) (`OTEL_COLLECTOR_VERSION`) — that file is the single source
-of truth, and the instance will not start without it.
+A local OpenTelemetry backend with a **web UI**, running Grafana's all-in-one
+[`grafana/otel-lgtm`](https://hub.docker.com/r/grafana/otel-lgtm) image, pinned in
+[`.env`](.env) (`LGTM_VERSION`).
 
-It accepts OTLP (gRPC and HTTP) from any instrumented service, and exports every signal to local
-JSON files under [`data/`](data) plus the collector's own `debug` output, so the instance is usable
-and verifiable without any external backend.
+One container bundles the **OpenTelemetry Collector** plus **Prometheus** (metrics), **Tempo**
+(traces), **Loki** (logs), **Pyroscope** (profiles) and **Grafana**, already wired to each other.
+Point any OTLP exporter at it and the data shows up in the UI.
+
+> Intended for development, demo and testing — not production.
 
 ## Run it
 
@@ -16,24 +16,24 @@ and verifiable without any external backend.
 docker compose up -d
 ```
 
-Stop it with `docker compose down`. Bump the collector version by editing
-[`OTEL_COLLECTOR_VERSION`](.env) and re-running `docker compose up -d`.
+Then open **http://127.0.0.1:3000** and log in with `admin` / `admin` (override in
+[`.env`](.env)). Stop with `docker compose down`. Bump the version by editing `LGTM_VERSION` in
+[`.env`](.env) and re-running `docker compose up -d`.
 
 ## Ports
 
-| Port  | What                                        | Bound on |
-| ----- | ------------------------------------------- | -------- |
-| 4317  | OTLP receiver, gRPC                          | all      |
-| 4318  | OTLP receiver, HTTP/protobuf + HTTP/JSON     | all      |
-| 13133 | `health_check` extension — `GET /` → 200     | all      |
-| 8888  | Collector self-metrics (Prometheus pull)     | all      |
-| 55679 | `zpages` extension (live pipeline debug UI)  | loopback |
-| 1777  | `pprof` extension                            | loopback |
+| Port  | What                                    |
+| ----- | --------------------------------------- |
+| 3000  | **Grafana web UI** — http://127.0.0.1:3000 |
+| 4317  | OTLP receiver, gRPC                      |
+| 4318  | OTLP receiver, HTTP/protobuf + HTTP/JSON |
+| 9090  | Prometheus                               |
+| 3200  | Tempo                                    |
+| 3100  | Loki                                     |
+| 4040  | Pyroscope                                |
 
-The two debug extensions are published on `127.0.0.1` only: they are an inspection surface, not
-part of the OTLP service. To drop them, remove `zpages`/`pprof` from `extensions:` and
-`service.extensions` in [`config/otelcol-contrib.yaml`](config/otelcol-contrib.yaml) and from
-`ports:` in [`docker-compose.yml`](docker-compose.yml).
+Loki's 3100 is mapped on the host here so logs are queryable directly; upstream's own
+`run-lgtm.sh` leaves it unpublished and reaches Loki only from inside the container.
 
 ## Send it telemetry
 
@@ -46,7 +46,7 @@ curl -X POST http://localhost:4318/v1/logs \
   -d '{"resourceLogs":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"manual"}}]},"scopeLogs":[{"logRecords":[{"timeUnixNano":"1761000000000000000","body":{"stringValue":"hello otel"}}]}]}]}'
 ```
 
-Then look at [`data/logs.json`](data/logs.json).
+Then explore it in Grafana (Explore → Loki).
 
 ## Verify
 
@@ -54,25 +54,42 @@ Then look at [`data/logs.json`](data/logs.json).
 ./scripts/smoke-test.sh
 ```
 
-Sends one span, one metric data point and one log record over OTLP/HTTP, then asserts the collector
-accepted each one and wrote it to `data/traces.json`, `data/metrics.json` and `data/logs.json`.
-Exits non-zero on any failure.
+Posts one span, one metric data point and one log record over OTLP/HTTP, then asserts each is
+**queryable from the backend that stores it** — the trace in Tempo, the metric in Prometheus, the
+log in Loki — plus that the Grafana UI answers. Polls with a timeout rather than sleeping a fixed
+interval, and exits non-zero on any failure.
 
 ## Layout
 
 ```
-docker-compose.yml           the instance
-config/otelcol-contrib.yaml  collector config: receivers, processors, exporters, pipelines
-scripts/smoke-test.sh        end-to-end verification
-data/                        exporter output (gitignored)
+docker-compose.yml     the instance
+scripts/smoke-test.sh  end-to-end verification
 ```
 
-The pipeline for each of traces, metrics and logs is `otlp → memory_limiter, batch → debug + file/<signal>`.
-Each signal writes its own exporter file so the three pipelines never share a file handle.
+Each component writes under `/data` in the container. That is backed by the **named volume**
+`otel-instance_lgtm-data`, so state survives container recreation.
 
-## Pointing a real backend at it
+> **Do not bind-mount a host directory over `/data`.** Loki's ingester keeps a WAL-backed store
+> and will not run it on a macOS virtiofs bind mount: it accepts no pushes and answers every
+> write with `503 Ingester is shutting down`, while queries keep working — so traces and metrics
+> look fine and only logs silently fail. This was reproduced with `./data:/data` and confirmed
+> fixed by the named volume.
 
-The `file/*` exporters keep the instance self-contained. To send to a backend instead (Jaeger,
-Prometheus, Grafana Tempo, an OTLP endpoint), add an exporter under `exporters:` in
-[`config/otelcol-contrib.yaml`](config/otelcol-contrib.yaml) and list it in the relevant pipeline in
-`service.pipelines`, then `docker compose restart otel-collector`.
+## Customising
+
+Grafana is configured with `GF_*` environment variables (see `.env`). To change the backends
+themselves, mount a config over the path the image documents — Prometheus at
+`/otel-lgtm/prometheus.yaml`, Tempo at `/otel-lgtm/tempo-config.yaml`, Loki at
+`/otel-lgtm/loki-config.yaml`, Pyroscope at `/otel-lgtm/pyroscope-config.yaml`, or the collector at
+`/otel-lgtm/otelcol-config.yaml`. Each also takes a `*_EXTRA_ARGS` variable for one-off flags (see
+[`docker-compose.yml`](docker-compose.yml), which sets `PROMETHEUS_EXTRA_ARGS` for retention).
+
+Overriding `otelcol-config.yaml` **replaces** the collector's base config, including the exporters
+that feed Prometheus/Tempo/Loki — do that only if you intend to re-wire those yourself. The image
+can also forward on to a vendor via `OTEL_EXPORTER_OTLP_ENDPOINT`.
+
+## History
+
+This previously ran `otel/opentelemetry-collector-contrib` on its own, writing traces/metrics/logs
+to local JSON files with no UI. It was migrated to `grafana/otel-lgtm` to get a real queryable
+backend; the OTLP ingress (4317/4318) is unchanged, so existing exporters keep working.
